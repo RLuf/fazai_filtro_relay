@@ -1,0 +1,640 @@
+{
+  "// SMTP Relay - Configuração Completa para Andarilho dos Véus": {},
+  
+  "server": {
+    "listen_host": "0.0.0.0",
+    "listen_port": 2525,
+    "max_connections": 1000,
+    "connection_timeout": 300,
+    "data_size_limit": 104857600,
+    "enable_tls": true,
+    "tls_cert": "/opt/smtp-relay/certs/server.crt",
+    "tls_key": "/opt/smtp-relay/certs/server.key",
+    "require_tls": false
+  },
+  
+  "security": {
+    "security_level": 2,
+    "score_threshold": 5.0,
+    "paranoid_mode": false,
+    "rate_limiting": {
+      "enabled": true,
+      "max_per_ip": 100,
+      "window_minutes": 60,
+      "blacklist_threshold": 500
+    },
+    "geo_blocking": {
+      "enabled": false,
+      "blocked_countries": ["CN", "RU", "KP"],
+      "whitelist_ips": ["192.168.1.0/24"]
+    }
+  },
+  
+  "database": {
+    "host": "localhost",
+    "port": 5432,
+    "user": "smtp_relay",
+    "password": "SuaS3nh4Ult4S3cur4!",
+    "database": "smtp_relay",
+    "pool_min_size": 5,
+    "pool_max_size": 20,
+    "connection_timeout": 30,
+    "command_timeout": 60,
+    "ssl_mode": "prefer"
+  },
+  
+  "redis": {
+    "host": "localhost",
+    "port": 6379,
+    "db": 0,
+    "password": null,
+    "connection_pool_size": 10,
+    "socket_timeout": 30,
+    "cache_ttl": 3600,
+    "max_memory": "512mb"
+  },
+  
+  "logging": {
+    "level": "INFO",
+    "file": "/var/log/smtp-relay/smtp-relay.log",
+    "max_size": "100MB",
+    "backup_count": 10,
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "syslog": {
+      "enabled": true,
+      "facility": "mail",
+      "address": "/dev/log"
+    }
+  },
+  
+  "web_interface": {
+    "enabled": true,
+    "host": "0.0.0.0",
+    "port": 8080,
+    "debug": false,
+    "authentication": {
+      "enabled": true,
+      "method": "basic",
+      "users": {
+        "admin": "$2b$12$encrypted_password_hash",
+        "viewer": "$2b$12$encrypted_password_hash"
+      }
+    },
+    "ssl": {
+      "enabled": false,
+      "cert_file": "/opt/smtp-relay/certs/web.crt",
+      "key_file": "/opt/smtp-relay/certs/web.key"
+    }
+  },
+  
+  "filters": {
+    "spf": {
+      "enabled": true,
+      "weight": 1.0,
+      "strict_mode": true,
+      "check_helo": true,
+      "dns_timeout": 10,
+      "cache_results": true,
+      "cache_ttl": 3600,
+      "actions": {
+        "pass": {"action": "accept", "score": -0.5},
+        "fail": {"action": "reject", "score": 8.0},
+        "softfail": {"action": "hold", "score": 2.0},
+        "neutral": {"action": "accept", "score": 0.0},
+        "none": {"action": "accept", "score": 1.0}
+      }
+    },
+    
+    "dkim": {
+      "enabled": true,
+      "weight": 1.0,
+      "require_signature": false,
+      "check_all_signatures": true,
+      "dns_timeout": 10,
+      "allowed_algorithms": ["rsa-sha256", "rsa-sha1", "ed25519-sha256"],
+      "min_key_size": 1024,
+      "cache_public_keys": true,
+      "actions": {
+        "valid": {"action": "accept", "score": -1.0},
+        "invalid": {"action": "hold", "score": 3.0},
+        "missing": {"action": "accept", "score": 0.5}
+      }
+    },
+    
+    "blacklist": {
+      "enabled": true,
+      "weight": 2.0,
+      "dns_blacklists": [
+        {
+          "name": "zen.spamhaus.org",
+          "weight": 2.0,
+          "timeout": 10,
+          "return_codes": {
+            "127.0.0.2": "SBL",
+            "127.0.0.3": "SBL",
+            "127.0.0.9": "PBL",
+            "127.0.0.10": "PBL",
+            "127.0.0.11": "CSS"
+          }
+        },
+        {
+          "name": "bl.spamcop.net",
+          "weight": 1.5,
+          "timeout": 10
+        },
+        {
+          "name": "cbl.abuseat.org",
+          "weight": 2.0,
+          "timeout": 10
+        },
+        {
+          "name": "psbl.surriel.com",
+          "weight": 1.0,
+          "timeout": 10
+        }
+      ],
+      "custom_blacklist": {
+        "ips": [
+          "192.168.100.100",
+          "10.0.0.0/8"
+        ],
+        "domains": [
+          "spam-domain.com",
+          "*.suspicious-tld"
+        ],
+        "emails": [
+          "spammer@domain.com",
+          "*@blacklisted-domain.com"
+        ]
+      },
+      "whitelist": {
+        "ips": [
+          "192.168.1.0/24",
+          "203.0.113.0/24"
+        ],
+        "domains": [
+          "trusted-domain.com",
+          "partner-company.org"
+        ]
+      },
+      "cache_results": true,
+      "cache_ttl": 1800,
+      "concurrent_checks": 5,
+      "actions": {
+        "listed": {"action": "reject", "score": 8.0},
+        "not_listed": {"action": "accept", "score": 0.0}
+      }
+    },
+    
+    "virus": {
+      "enabled": true,
+      "weight": 3.0,
+      "engines": {
+        "clamav": {
+          "enabled": true,
+          "socket": "/var/run/clamav/clamd.ctl",
+          "timeout": 60,
+          "max_file_size": 52428800,
+          "scan_archives": true,
+          "scan_ole2": true,
+          "scan_pdf": true,
+          "scan_html": true
+        },
+        "external": {
+          "enabled": false,
+          "command": "/usr/local/bin/custom-scanner",
+          "args": ["--scan", "--format=json"],
+          "timeout": 120
+        }
+      },
+      "quarantine_infected": true,
+      "scan_attachments": true,
+      "skip_encrypted": true,
+      "actions": {
+        "infected": {"action": "quarantine", "score": 15.0},
+        "clean": {"action": "accept", "score": 0.0},
+        "error": {"action": "hold", "score": 1.0}
+      }
+    },
+    
+    "ai_spam": {
+      "enabled": true,
+      "weight": 2.0,
+      "provider": "anthropic",
+      "config": {
+        "api_endpoint": "https://api.anthropic.com/v1/messages",
+        "model": "claude-3-sonnet-20240229",
+        "max_tokens": 500,
+        "temperature": 0.1
+      },
+      "thresholds": {
+        "spam": 0.7,
+        "phishing": 0.8,
+        "malware": 0.9
+      },
+      "analysis": {
+        "analyze_headers": true,
+        "analyze_body": true,
+        "analyze_attachments": false,
+        "max_content_length": 2000,
+        "include_sender_reputation": true
+      },
+      "prompts": {
+        "spam": "Analise este email em português brasileiro para características de spam. Considere: linguagem urgente, ofertas suspeitas, erros ortográficos, links duvidosos. Responda com JSON: {\"spam_score\": 0.0-1.0, \"reason\": \"explicação\", \"confidence\": 0.0-1.0}",
+        "phishing": "Identifique tentativas de phishing neste email brasileiro. Procure por: solicitação de dados pessoais, URLs falsas de bancos, urgência artificial, imitação de empresas conhecidas. JSON: {\"phishing_score\": 0.0-1.0, \"indicators\": [], \"confidence\": 0.0-1.0}"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60,
+        "burst_limit": 10,
+        "queue_size": 100
+      },
+      "cache_results": true,
+      "cache_ttl": 7200,
+      "actions": {
+        "spam": {"action": "quarantine", "score": 8.0},
+        "phishing": {"action": "reject", "score": 12.0},
+        "clean": {"action": "accept", "score": -1.0}
+      }
+    },
+    
+    "content": {
+      "enabled": true,
+      "weight": 1.5,
+      "yara_rules_path": "/opt/smtp-relay/rules/",
+      "custom_rules": {
+        "brazilian_scams": {
+          "enabled": true,
+          "patterns": [
+            "(?i)pix.*urgente",
+            "(?i)cpf.*bloqueado",
+            "(?i)receita.*federal.*pendente",
+            "(?i)conta.*suspensa.*banco"
+          ],
+          "score": 4.0,
+          "action": "hold"
+        },
+        "cryptocurrency_scams": {
+          "enabled": true,
+          "patterns": [
+            "(?i)bitcoin.*dobrar",
+            "(?i)ethereum.*investimento.*garantido",
+            "(?i)cripto.*lucro.*certo"
+          ],
+          "score": 6.0,
+          "action": "quarantine"
+        }
+      },
+      "attachment_analysis": {
+        "enabled": true,
+        "max_size": 10485760,
+        "suspicious_extensions": [
+          ".exe", ".scr", ".pif", ".bat", ".cmd", ".com",
+          ".jar", ".js", ".vbs", ".ps1", ".pdf"
+        ],
+        "scan_archives": true,
+        "extract_metadata": true
+      },
+      "actions": {
+        "match": {"action": "hold", "score": 4.0},
+        "no_match": {"action": "accept", "score": 0.0}
+      }
+    },
+    
+    "reputation": {
+      "enabled": true,
+      "weight": 1.0,
+      "sources": [
+        {
+          "name": "sender_reputation",
+          "type": "internal",
+          "weight": 1.0
+        },
+        {
+          "name": "domain_age",
+          "type": "whois",
+          "weight": 0.5,
+          "min_age_days": 30
+        }
+      ],
+      "learning_enabled": true,
+      "decay_factor": 0.95,
+      "min_samples": 10
+    },
+    
+    "greylisting": {
+      "enabled": false,
+      "initial_delay": 300,
+      "max_delay": 86400,
+      "cleanup_interval": 3600,
+      "whitelist_after": 5,
+      "exemptions": {
+        "trusted_networks": ["192.168.1.0/24"],
+        "authenticated_senders": true,
+        "spf_pass": true
+      }
+    }
+  },
+  
+  "relay": {
+    "upstream_servers": [
+      {
+        "host": "smtp.gmail.com",
+        "port": 587,
+        "ssl": true,
+        "auth": {
+          "username": "relay@domain.com",
+          "password": "app_password"
+        },
+        "priority": 1,
+        "max_connections": 10
+      }
+    ],
+    "retry_policy": {
+      "max_attempts": 3,
+      "initial_delay": 300,
+      "max_delay": 3600,
+      "exponential_backoff": true
+    },
+    "queue_management": {
+      "max_queue_size": 10000,
+      "process_interval": 30,
+      "cleanup_after_days": 7
+    }
+  },
+  
+  "quarantine": {
+    "storage_path": "/opt/smtp-relay/quarantine/",
+    "auto_cleanup_days": 30,
+    "notification": {
+      "enabled": true,
+      "recipients": ["admin@domain.com"],
+      "threshold": 50,
+      "frequency": "daily"
+    },
+    "review_interface": {
+      "auto_categorize": true,
+      "bulk_operations": true,
+              "export_formats": ["mbox", "eml", "pdf_report"]
+    }
+  },
+  
+  "monitoring": {
+    "metrics": {
+      "enabled": true,
+      "prometheus_endpoint": "/metrics",
+      "custom_metrics": [
+        "messages_per_second",
+        "filter_processing_time",
+        "quarantine_rate",
+        "false_positive_rate"
+      ]
+    },
+    "health_checks": {
+      "enabled": true,
+      "endpoint": "/health",
+      "checks": [
+        "database_connection",
+        "redis_connection",
+        "clamav_status",
+        "disk_space",
+        "memory_usage"
+      ]
+    },
+    "alerting": {
+      "enabled": true,
+      "channels": {
+        "telegram": {
+          "enabled": true,
+          "token": "bot_token_here",
+          "chat_id": "chat_id_here",
+          "severity_filter": ["critical", "warning"]
+        },
+        "slack": {
+          "enabled": false,
+          "webhook_url": "slack_webhook_url",
+          "channel": "#alerts"
+        },
+        "email": {
+          "enabled": true,
+          "smtp_server": "localhost",
+          "recipients": ["admin@domain.com"],
+          "severity_filter": ["critical"]
+        }
+      },
+      "rules": [
+        {
+          "name": "high_quarantine_rate",
+          "condition": "quarantine_rate > 0.1",
+          "severity": "warning",
+          "message": "Taxa de quarentena alta: {quarantine_rate:.2%}"
+        },
+        {
+          "name": "virus_detection",
+          "condition": "viruses_detected > 0",
+          "severity": "critical",
+          "message": "{viruses_detected} vírus detectados"
+        },
+        {
+          "name": "service_down",
+          "condition": "service_status != 'healthy'",
+          "severity": "critical",
+          "message": "Serviço SMTP Relay inativo"
+        }
+      ]
+    }
+  },
+  
+  "integration": {
+    "socks_proxy": {
+      "enabled": false,
+      "host": "127.0.0.1",
+      "port": 1080,
+      "upstream_spamd": "127.0.0.1:783",
+      "timeout": 30,
+      "authentication": {
+        "enabled": false,
+        "username": "proxy_user",
+        "password": "proxy_pass"
+      }
+    },
+    
+    "pipe_integration": {
+      "enabled": false,
+      "commands": {
+        "spamc": {
+          "enabled": false,
+          "path": "/usr/bin/spamc",
+          "args": ["-c", "-t", "30"],
+          "timeout": 30,
+          "score_threshold": 5.0
+        },
+        "custom_scanner": {
+          "enabled": false,
+          "path": "/opt/custom/scanner",
+          "args": ["--email", "--json"],
+          "timeout": 60
+        }
+      }
+    },
+    
+    "api_integrations": {
+      "virustotal": {
+        "enabled": false,
+        "api_key": "vt_api_key_here",
+        "rate_limit": 4,
+        "scan_attachments": true,
+        "min_file_size": 1024
+      },
+      "urlvoid": {
+        "enabled": false,
+        "api_key": "urlvoid_api_key",
+        "scan_urls": true,
+        "cache_results": true
+      }
+    },
+    
+    "webhook": {
+      "enabled": false,
+      "events": ["quarantine", "virus_detected", "high_score"],
+      "endpoints": [
+        {
+          "url": "https://webhook.site/unique-id",
+          "method": "POST",
+          "headers": {
+            "Authorization": "Bearer token_here",
+            "Content-Type": "application/json"
+          },
+          "timeout": 10,
+          "retry_attempts": 3
+        }
+      ]
+    }
+  },
+  
+  "performance": {
+    "threading": {
+      "max_workers": 50,
+      "io_workers": 20,
+      "cpu_workers": 4
+    },
+    "caching": {
+      "dns_cache_size": 10000,
+      "dns_cache_ttl": 300,
+      "filter_cache_size": 50000,
+      "filter_cache_ttl": 3600,
+      "reputation_cache_size": 100000,
+      "reputation_cache_ttl": 86400
+    },
+    "optimization": {
+      "parallel_filter_execution": true,
+      "async_dns_resolution": true,
+      "connection_pooling": true,
+      "lazy_loading": true,
+      "memory_limit": "2GB",
+      "gc_threshold": [700, 10, 10]
+    }
+  },
+  
+  "backup": {
+    "enabled": true,
+    "schedule": "0 2 * * *",
+    "retention_days": 30,
+    "compression": true,
+    "encryption": {
+      "enabled": true,
+      "key_file": "/opt/smtp-relay/backup.key"
+    },
+    "targets": {
+      "database": true,
+      "config": true,
+      "rules": true,
+      "quarantine": false,
+      "logs": false
+    },
+    "storage": {
+      "local_path": "/backup/smtp-relay/",
+      "remote": {
+        "enabled": false,
+        "type": "s3",
+        "config": {
+          "bucket": "smtp-relay-backups",
+          "region": "us-east-1",
+          "access_key": "aws_access_key",
+          "secret_key": "aws_secret_key"
+        }
+      }
+    }
+  },
+  
+  "compliance": {
+    "gdpr": {
+      "enabled": true,
+      "data_retention_days": 365,
+      "anonymize_logs": true,
+      "right_to_deletion": true
+    },
+    "audit_logging": {
+      "enabled": true,
+      "log_all_decisions": true,
+      "include_message_content": false,
+      "retention_years": 7
+    },
+    "privacy": {
+      "hash_sender_addresses": true,
+      "anonymize_ip_addresses": true,
+      "encrypt_stored_messages": true
+    }
+  },
+  
+  "development": {
+    "debug_mode": false,
+    "test_mode": false,
+    "mock_services": {
+      "clamav": false,
+      "ai_api": false,
+      "dns_queries": false
+    },
+    "profiling": {
+      "enabled": false,
+      "output_dir": "/tmp/smtp-relay-profile/"
+    }
+  },
+  
+  "custom_filters": {
+    "brazilian_specific": {
+      "enabled": true,
+      "class": "BrazilianSpecificFilter",
+      "config": {
+        "check_cpf_format": true,
+        "validate_bank_codes": true,
+        "detect_pix_scams": true,
+        "common_brazilian_domains": [
+          "gmail.com", "hotmail.com", "yahoo.com.br",
+          "bol.com.br", "uol.com.br", "ig.com.br"
+        ],
+        "suspicious_keywords": [
+          "boleto vencido", "conta bloqueada", "cpf irregular",
+          "receita federal", "banco central", "pix obrigatório",
+          "auxílio emergencial", "benefício cancelado"
+        ]
+      }
+    },
+    
+    "cryptocurrency_detector": {
+      "enabled": true,
+      "class": "CryptocurrencyScamFilter",
+      "config": {
+        "wallet_regex_patterns": [
+          "1[A-HJ-NP-Z0-9]{25,34}",
+          "3[A-HJ-NP-Z0-9]{25,34}",
+          "bc1[a-z0-9]{39,59}",
+          "0x[a-fA-F0-9]{40}"
+        ],
+        "scam_indicators": [
+          "duplicate your", "send 1 receive 2", "bitcoin generator",
+          "crypto giveaway", "elon musk", "free bitcoin"
+        ]
+      }
+    }
+  }
+}
